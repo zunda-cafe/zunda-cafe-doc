@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+ 
+<head>
+  <meta charset="utf-8">
+  <title>D3force simulation</title>
+</head>
+ 
+<body>
+	<div >
+  	<svg width="500" height="500" stroke-width="1px" stroke="#000" style="border:1;border-style:solid"></svg>
+	</div>
+  <script src="https://d3js.org/d3.v5.min.js"></script>
+  <script type>
+  // 変数と初期化
+	var color = d3.schemeCategory10;
+	var colorIdx = 0;
+	var node_id = 0;
+	var link_id = 5;
+	var width = 500;
+	var height = 500;
+	var from_id = 0;
+
+  // 初期描画用のデータ準備
+  var nodesData = [
+    {id:node_id++},
+    {id:node_id++},
+    {id:node_id++},
+    {id:node_id++},
+    {id:node_id++},
+    {id:node_id++},
+    {id:node_id++},    
+  ]
+ 
+  var linksData = [
+    { id:link_id++, source: 0, target: 1 },
+    { id:link_id++, source: 2, target: 4 },
+    { id:link_id++, source: 3, target: 3 },
+    { id:link_id++, source: 3, target: 5 },
+    { id:link_id++, source: 5, target: 1 }
+  ]
+ 
+  // リンク要素配置
+  var link = d3.select("svg")
+    .selectAll("line")
+    .data(linksData)
+    .enter()
+    .append("line")
+    .attr("stroke-width", 1)
+    .attr("stroke", "black");
+
+  // ノード要素配置
+  var node = d3.select("svg")
+    .selectAll("circle")
+    .data(nodesData)
+    .enter()
+    .append("circle")
+    .attr("r", 10)
+    .attr("fill",function(d,i){return color[++colorIdx%10]})
+    .call(d3.drag()
+      .on("start", dragstarted)
+      .on("drag", dragged)
+      .on("end", dragended));
+ 
+  // 力学モデルの設定
+  var simulation = d3.forceSimulation()
+    .force("link", d3.forceLink().distance(50).strength(1.5))
+    .force("charge", d3.forceManyBody())
+    .force("center", d3.forceCenter(width/2 , height/2));
+
+	simulation.velocityDecay(0.5) // 摩擦力 
+	simulation.force("charge").strength(-30) //反発力
+  simulation.nodes(nodesData).on("tick", ticked);　// ノードデータ設定とコールバック
+  simulation.force("link").links(linksData); //ノードデータ設定
+ 
+  // forceSimulation 描画更新用関数
+  function ticked() {
+    link
+      .attr("x1", function(d) { return limit(d.source.x); })
+      .attr("y1", function(d) { return limit(d.source.y); })
+      .attr("x2", function(d) { return limit(d.target.x); })
+      .attr("y2", function(d) { return limit(d.target.y); });
+    node
+      .attr("cx", function(d) { return limit(d.x);})
+      .attr("cy", function(d) { return limit(d.y); });
+  }
+
+	// 画面からはみ出さないようにするための補助関数
+ 	function limit(d){
+		if(d < 0)
+			return 0;
+		else if(d > 500)
+			return 500;
+		else
+			return d;
+	}
+  // ドラッグ時のイベント関数
+  function dragstarted(d) {
+    if(!d3.event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x;
+    d.fy = d.y;
+
+		// ノード新規作成のための関数
+		if(from_id != 0 && from_id != d.id){
+			createLink(from_id,d.id);
+		}else{
+			from_id = d.id;
+		}
+  }
+  function dragged(d) {
+    d.fx = d3.event.x;
+    d.fy = d3.event.y;
+  }
+ 
+  function dragended(d) {
+    if(!d3.event.active) simulation.alphaTarget(0);
+    d.fx = null;
+    d.fy = null;
+  }
+
+　//リンク作成の関数
+	function createLink(from,to){
+  	linksData.push({ id:link_id++, source: from, target: to });
+		restart("link");
+		from_id = 0;
+	} 
+	
+	//ノード作成の関数
+	d3.select("svg").on('dblclick',function(){
+  	nodesData.push({id:node_id++});
+		restart("node");
+	});
+
+	// 再描画用関数
+	function restart(type) {
+
+  // ノード情報の更新
+	if(type === "node"){
+	  node = node.data(nodesData, function(d) { return d.id;});
+	  node.exit().remove();
+	  node = node.enter().append("circle").attr("fill", color[++colorIdx%10]).attr("r", 10)
+		.call(d3.drag()
+     	.on("start", dragstarted)
+	     .on("drag", dragged)
+	     .on("end", dragended))
+		.merge(node);
+	}
+
+	// リンク情報の更新
+  if(type === "link"){
+  	link = link.data(linksData, function(d) { return d.id; });
+	  link.exit().remove();
+	  link = link.enter().append("line").merge(link);
+	}
+
+  // simulation 情報の更新
+  simulation.force("link").links(linksData);
+  simulation.nodes(nodesData);
+  simulation.alpha(1).restart();
+}
+  </script>
+	<div>
+		<ul>
+			<li>操作
+				<ul>
+					<li>ダブルクリックでノード追加</li>
+		　　	<li>二つのノードを順にクリックするとエッジ追加</li>
+				</ul>
+			</li>
+			<li>働く力
+				<ul>
+					<dt>摩擦力</dt><dd>どれだけ動きが止まりやすいか。simulation.velocityDecay(0.5)</dd>
+					<dt>中心重力</dt><dd>中央に集まる力(場所)。d3.forceCenter(width/2 , height/2)</dd>
+					<dt>リンクの引力</dt><dd>リンクの長さとリンクの両端の引力。d3.forceLink().distance(50).strength(1.5)</dd>
+					<dt>ノードの斥力</dt><dd>ノード同士が反発して遠ざかる力。	simulation.force("charge").strength(-30)</dd>
+				</ul>
+			</li>
+		</ul>
+	</div>
+</body>
+ 
+</html>
